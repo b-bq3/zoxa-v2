@@ -1,34 +1,27 @@
-// ===== Zoxa Addons — Caching Layer (L1 + L2 ready) =====
-
-interface CacheEntry<T> { data: T; expiresAt: number; frequency: number; lastAccess: number }
-
+// ===== Zoxa — L1 Cache =====
+interface E<T> { d: T; e: number; f: number; l: number }
 export class LFUCache<T = unknown> {
-  private store = new Map<string, CacheEntry<T>>()
-  constructor(private maxSize = 50, private defaultTTLMs = 60_000) {}
-
-  get(key: string): T | null {
-    const entry = this.store.get(key)
-    if (!entry) return null
-    if (Date.now() > entry.expiresAt) { this.store.delete(key); return null }
-    entry.frequency++; entry.lastAccess = Date.now()
-    return entry.data
+  private s = new Map<string, E<T>>()
+  constructor(private m = 100, private ttl = 120_000) {}
+  get(k: string): T | null {
+    const e = this.s.get(k)
+    if (!e) return null
+    if (Date.now() > e.e) { this.s.delete(k); return null }
+    e.f++; e.l = Date.now()
+    return e.d
   }
-
-  set(key: string, data: T, ttlMs?: number): void {
-    if (this.store.size >= this.maxSize) this.evict()
-    this.store.set(key, { data, expiresAt: Date.now() + (ttlMs ?? this.defaultTTLMs), frequency: 1, lastAccess: Date.now() })
+  set(k: string, d: T, t?: number) {
+    if (this.s.size >= this.m) this.evict()
+    this.s.set(k, { d, e: Date.now() + (t ?? this.ttl), f: 1, l: Date.now() })
   }
-
-  private evict(): void {
-    let lowestFreq = Infinity, oldestAccess = Infinity, keyToEvict: string | null = null
-    for (const [key, entry] of this.store) {
-      if (entry.frequency < lowestFreq || (entry.frequency === lowestFreq && entry.lastAccess < oldestAccess))
-        { lowestFreq = entry.frequency; oldestAccess = entry.lastAccess; keyToEvict = key }
+  private evict() {
+    let lf = Infinity, oa = Infinity, k: string | null = null
+    for (const [key, e] of this.s) {
+      if (e.f < lf || (e.f === lf && e.l < oa)) { lf = e.f; oa = e.l; k = key }
     }
-    if (keyToEvict) this.store.delete(keyToEvict)
+    if (k) this.s.delete(k)
   }
-  clear(): void { this.store.clear() }
+  clear() { this.s.clear() }
 }
-
-export const addonCache = new LFUCache<any>(50, 60_000)
+export const addonCache = new LFUCache<any>(100, 120_000)
 export const statsCache = new LFUCache<any>(5, 60_000)
