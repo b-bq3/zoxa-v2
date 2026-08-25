@@ -4,7 +4,7 @@ import { Suspense } from 'react'
 import type { Metadata } from 'next'
 import { SearchBar } from '@/components/addons/search-bar'
 import { AddonGrid } from '@/components/addons/addon-grid'
-import { supabaseServer } from '@/lib/supabase-server'
+import { supabaseAdmin } from '@/lib/supabase-server'
 import type { AddonRow } from '@/types'
 
 export const metadata: Metadata = {
@@ -18,7 +18,7 @@ interface SearchPageProps {
 
 async function getSearchResults(query: string): Promise<AddonRow[]> {
   try {
-    const { data } = await supabaseServer
+    const { data } = await supabaseAdmin
       .from('addons')
       .select('id,name,description,version,mc_version,edition,image_url,file_url,file_size,downloads,category,created_at')
       .ilike('name', `%${query}%`)

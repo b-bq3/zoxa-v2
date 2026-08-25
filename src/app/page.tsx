@@ -4,7 +4,7 @@ import { Suspense } from 'react'
 import { Zap, Search, Download, Shield } from 'lucide-react'
 import { SearchBar } from '@/components/addons/search-bar'
 import { AddonGrid } from '@/components/addons/addon-grid'
-import { supabaseServer } from '@/lib/supabase-server'
+import { supabaseAdmin } from '@/lib/supabase-server'
 import type { AddonRow } from '@/types'
 
 const features = [
@@ -27,7 +27,7 @@ const features = [
 
 async function getRecentAddons(): Promise<AddonRow[]> {
   try {
-    const { data } = await supabaseServer
+    const { data } = await supabaseAdmin
       .from('addons')
       .select('id,name,description,version,mc_version,edition,image_url,file_url,file_size,downloads,category,created_at')
       .order('created_at', { ascending: false })
