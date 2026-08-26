@@ -1,7 +1,7 @@
 // ===== Zoxa — Bot Webhook =====
 // البوت جزء لا يتجزأ من الموقع
 import { NextResponse } from 'next/server'
-import { getStats } from '@/lib/db/neon'
+import { getStats, getAllAddons, searchAddons } from '@/lib/db/neon'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -28,6 +28,9 @@ async function sendTelegram(chatId: number, text: string, extra: any = {}) {
 
 // === Handle commands ===
 async function handleCommand(chatId: number, uid: number, txt: string) {
+  // Debug: log الـ input
+  console.log(`🔍 Command debug: txt="${txt}" length=${txt.length} uid=${uid} owner=${OWNER_ID} match=${uid === OWNER_ID}`)
+  
   // فقط للمالك
   if (uid !== OWNER_ID) {
     await sendTelegram(chatId, '❌ هذا البوت خاص.')
@@ -60,6 +63,15 @@ async function handleCommand(chatId: number, uid: number, txt: string) {
     return
   }
 
+  if (txt === '/add') {
+    await sendTelegram(chatId,
+      `📸 <b>الخطوة 1/7:</b> صورة الإضافة\n\n` +
+      `أرسل رابط صورة أو ارفع صورة.\n\n` +
+      `<i>أو أرسل "تخطي" للمتابعة بدون صورة.</i>`
+    )
+    return
+  }
+
   if (txt === '/stats') {
     try {
       const stats = await getStats()
@@ -68,15 +80,14 @@ async function handleCommand(chatId: number, uid: number, txt: string) {
         `📦 الإضافات: ${stats.total_addons}\n` +
         `📥 التحميلات: ${stats.total_downloads.toLocaleString()}`
       )
-    } catch {
-      await sendTelegram(chatId, '❌ خطأ في جلب الإحصائيات')
+    } catch (e: any) {
+      await sendTelegram(chatId, `❌ خطأ في جلب الإحصائيات: ${e.message}`)
     }
     return
   }
 
   if (txt === '/list') {
     try {
-      const { getAllAddons } = await import('@/lib/db/neon')
       const data = await getAllAddons(10, 0)
       if (!data.length) {
         await sendTelegram(chatId, '📦 لا توجد إضافات حالياً')
@@ -87,18 +98,9 @@ async function handleCommand(chatId: number, uid: number, txt: string) {
         t += `${i + 1}. <b>${a.name}</b>\n`
       })
       await sendTelegram(chatId, t)
-    } catch {
-      await sendTelegram(chatId, '❌ خطأ في جلب الإضافات')
+    } catch (e: any) {
+      await sendTelegram(chatId, `❌ خطأ في جلب الإضافات: ${e.message}`)
     }
-    return
-  }
-
-  if (txt === '/add') {
-    await sendTelegram(chatId,
-      `📸 <b>الخطوة 1/7:</b> صورة الإضافة\n\n` +
-      `أرسل رابط صورة أو ارفع صورة.\n\n` +
-      `<i>أو أرسل "تخطي" للمتابعة بدون صورة.</i>`
-    )
     return
   }
 
@@ -109,7 +111,6 @@ async function handleCommand(chatId: number, uid: number, txt: string) {
       return
     }
     try {
-      const { searchAddons } = await import('@/lib/db/neon')
       const data = await searchAddons(q, 5)
       if (!data.length) {
         await sendTelegram(chatId, `🔍 لا توجد نتائج لـ "${q}"`)
@@ -120,8 +121,8 @@ async function handleCommand(chatId: number, uid: number, txt: string) {
         t += `${i + 1}. <b>${a.name}</b> — ${a.category || ''}\n`
       })
       await sendTelegram(chatId, t)
-    } catch {
-      await sendTelegram(chatId, '❌ خطأ في البحث')
+    } catch (e: any) {
+      await sendTelegram(chatId, `❌ خطأ في البحث: ${e.message}`)
     }
     return
   }
@@ -141,18 +142,19 @@ export async function POST(request: Request) {
     const uid = msg.from?.id
     const txt = (msg.text || '').trim()
 
-    console.log(`📨 Bot: from=${uid} chat=${cid} text="${txt}"`)
+    console.log(`📨 Bot webhook: from=${uid} chat=${cid} text="${txt}"`)
 
-    // لا نرد مع await — نرسل الرد فوراً
+    // رد فوراً بـ 200 OK — لا ننتظر معالجة الأوامر
+    // ثم نعالج الأوامر في الخلفية
     handleCommand(cid, uid, txt).catch(e => console.error('handleCommand error:', e.message))
 
     return NextResponse.json({ ok: true })
   } catch (e: any) {
-    console.error('bot error:', e.message)
+    console.error('bot webhook error:', e.message)
     return NextResponse.json({ ok: false }, { status: 500 })
   }
 }
 
 export async function GET() {
-  return NextResponse.json({ ok: true, bot: 'DevZoxaBot', version: '1.0' })
+  return NextResponse.json({ ok: true, bot: 'DevZoxaBot', version: '1.0', owner: 6769891933 })
 }
