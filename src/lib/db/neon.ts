@@ -1,27 +1,57 @@
 // ===== Zoxa — Neon PostgreSQL Client =====
 import { Pool } from 'pg'
 
-const connectionString = process.env.DATABASE_URL
-if (!connectionString) {
-  throw new Error('DATABASE_URL environment variable is required')
+let pool: Pool | null = null
+
+export function getPool(): Pool {
+  if (pool) return pool
+
+  const connectionString = process.env.DATABASE_URL
+  if (!connectionString) {
+    console.error('❌ DATABASE_URL not set')
+    throw new Error('DATABASE_URL environment variable is required')
+  }
+
+  console.log('🔗 Creating new Neon connection pool...')
+  pool = new Pool({
+    connectionString,
+    ssl: {
+      rejectUnauthorized: false,
+    },
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 10000,
+    max: 20,
+    min: 2,
+  })
+
+  pool.on('error', (err: any) => {
+    console.error('❌ Pool error:', err.message)
+  })
+
+  return pool
 }
 
-// Create pool with fresh connection each time
-export const pool = new Pool({
-  connectionString,
-  ssl: {
-    rejectUnauthorized: false,
+// Lazy-load pool on first use
+export const pool = {
+  query: async (text: string, values?: any[]) => {
+    const p = getPool()
+    try {
+      return await p.query(text, values)
+    } catch (err: any) {
+      console.error('❌ Query error:', err.message)
+      throw err
+    }
   },
-  idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 10000,
-  max: 20,
-  min: 2,
-})
-
-// Handle pool errors
-pool.on('error', (err: any) => {
-  console.error('Unexpected pool error:', err)
-})
+  connect: async () => {
+    return getPool().connect()
+  },
+  end: async () => {
+    if (pool) {
+      await pool.end()
+      pool = null
+    }
+  },
+}
 
 // ===== Addon Operations =====
 
