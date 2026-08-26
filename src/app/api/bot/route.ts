@@ -54,7 +54,7 @@ const userState: Record<number, { step: number; data: any }> = {}
 
 // === Handle commands ===
 async function handleCommand(chatId: number, uid: number, txt: string, data?: string) {
-  console.log(`🔍 Command: uid=${uid} txt="${txt}" data="${data}"`)
+  console.log(`🔍 Command: uid=${uid} txt="${txt}" data="${data}" state=${JSON.stringify(userState[chatId])}`)
 
   // فقط للمالك
   if (uid !== OWNER_ID) {
