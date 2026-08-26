@@ -4,11 +4,19 @@ import { Pool } from 'pg'
 const neonConnectionString = process.env.DATABASE_URL || process.env.NEON_DATABASE_URL
 
 if (!neonConnectionString) {
+  console.error('❌ DATABASE_URL or NEON_DATABASE_URL not set')
   throw new Error('DATABASE_URL or NEON_DATABASE_URL not set')
 }
 
+console.log('🔗 Connecting to Neon with DATABASE_URL starting with:', neonConnectionString.substring(0, 50) + '...')
+
 export const pool = new Pool({
   connectionString: neonConnectionString,
+  ssl: {
+    rejectUnauthorized: false
+  },
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 5000,
 })
 
 // ===== Addon Operations =====
