@@ -1,55 +1,32 @@
-// ===== Zoxa — Neon PostgreSQL Client =====
+// ===== Zoxa — Neon PostgreSQL Direct Client =====
 import { Pool } from 'pg'
 
-let poolInstance: Pool | null = null
-
-function getPool(): Pool {
-  if (poolInstance) return poolInstance
-
-  const connectionString = process.env.DATABASE_URL
-  if (!connectionString) {
-    console.error('❌ DATABASE_URL not set')
-    throw new Error('DATABASE_URL environment variable is required')
+// Create a fresh pool instance for each request
+export function createPool() {
+  const url = process.env.DATABASE_URL
+  if (!url) {
+    throw new Error('DATABASE_URL not configured')
   }
-
-  console.log('🔗 Creating new Neon connection pool...')
-  poolInstance = new Pool({
-    connectionString,
-    ssl: {
-      rejectUnauthorized: false,
-    },
-    idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 10000,
-    max: 20,
-    min: 2,
+  return new Pool({
+    connectionString: url,
+    ssl: { rejectUnauthorized: false },
+    idleTimeoutMillis: 10000,
+    connectionTimeoutMillis: 5000,
   })
-
-  poolInstance.on('error', (err: any) => {
-    console.error('❌ Pool error:', err.message)
-  })
-
-  return poolInstance
 }
 
-// Lazy-load pool on first use
+// Use pool for queries
 export const pool = {
   query: async (text: string, values?: any[]) => {
-    const p = getPool()
+    const p = createPool()
     try {
       return await p.query(text, values)
-    } catch (err: any) {
-      console.error('❌ Query error:', err.message)
-      throw err
+    } finally {
+      await p.end()
     }
   },
   connect: async () => {
-    return getPool().connect()
-  },
-  end: async () => {
-    if (poolInstance) {
-      await poolInstance.end()
-      poolInstance = null
-    }
+    return createPool().connect()
   },
 }
 
@@ -140,7 +117,6 @@ export async function recordDownload(addon_id: number, user_id?: number, ip?: st
     [addon_id, user_id || null, ip || null, user_agent || null]
   )
 
-  // Update downloads count
   await pool.query(
     'UPDATE addons SET downloads = downloads + 1 WHERE id = $1',
     [addon_id]
