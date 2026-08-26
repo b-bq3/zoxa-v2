@@ -1,33 +1,26 @@
 // ===== Zoxa — Neon PostgreSQL Client =====
 import { Pool } from 'pg'
 
-// Debug: log all DATABASE_* env vars
-if (process.env.NODE_ENV === 'production') {
-  console.log('🔍 Vercel Production - Available DB Env Vars:', {
-    DATABASE_URL: process.env.DATABASE_URL ? 'SET' : 'NOT_SET',
-    NEON_DATABASE_URL: process.env.NEON_DATABASE_URL ? 'SET' : 'NOT_SET',
-  })
+const connectionString = process.env.DATABASE_URL
+if (!connectionString) {
+  throw new Error('DATABASE_URL environment variable is required')
 }
 
-const neonConnectionString = process.env.DATABASE_URL || process.env.NEON_DATABASE_URL
-
-if (!neonConnectionString) {
-  console.error('❌ CRITICAL: No DATABASE_URL found')
-  console.error('❌ Available vars:', Object.keys(process.env).filter(k => k.includes('DATABASE') || k.includes('NEON')))
-  throw new Error('DATABASE_URL not configured')
-}
-
-console.log('🔗 Connecting to Neon:', neonConnectionString.substring(0, 80) + '...')
-
+// Create pool with fresh connection each time
 export const pool = new Pool({
-  connectionString: neonConnectionString,
+  connectionString,
   ssl: {
-    rejectUnauthorized: false
+    rejectUnauthorized: false,
   },
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 10000,
   max: 20,
   min: 2,
+})
+
+// Handle pool errors
+pool.on('error', (err: any) => {
+  console.error('Unexpected pool error:', err)
 })
 
 // ===== Addon Operations =====
@@ -69,6 +62,16 @@ export async function getAddonsByCategory(category: string, limit = 20) {
   return res.rows
 }
 
+export async function getStats() {
+  const addonsRes = await pool.query('SELECT COUNT(*) as count FROM addons')
+  const downloadsRes = await pool.query('SELECT COUNT(*) as count FROM addon_downloads')
+
+  return {
+    total_addons: parseInt(addonsRes.rows[0]?.count || '0'),
+    total_downloads: parseInt(downloadsRes.rows[0]?.count || '0'),
+  }
+}
+
 export async function createAddon(data: {
   name: string
   description: string
@@ -78,7 +81,7 @@ export async function createAddon(data: {
   image_url?: string
   file_url?: string
   file_size?: number
-  created_by: number
+  created_by?: number
 }) {
   const res = await pool.query(
     `INSERT INTO addons (name, description, edition, version, category, image_url, file_url, file_size, created_by)
@@ -93,38 +96,25 @@ export async function createAddon(data: {
       data.image_url || null,
       data.file_url || null,
       data.file_size || 0,
-      data.created_by,
+      data.created_by || null,
     ]
   )
   return res.rows[0]
 }
 
-export async function getStats() {
-  const addonsRes = await pool.query('SELECT COUNT(*) FROM addons')
-  const downloadsRes = await pool.query('SELECT SUM(downloads) FROM addons')
-  
-  return {
-    addonsCount: parseInt(addonsRes.rows[0].count) || 0,
-    totalDownloads: parseInt(downloadsRes.rows[0].sum) || 0,
-  }
-}
+export async function recordDownload(addon_id: number, user_id?: number, ip?: string, user_agent?: string) {
+  const res = await pool.query(
+    `INSERT INTO addon_downloads (addon_id, user_id, ip_address, user_agent)
+     VALUES ($1, $2, $3, $4)
+     RETURNING *`,
+    [addon_id, user_id || null, ip || null, user_agent || null]
+  )
 
-export async function incrementDownloads(addonId: number) {
+  // Update downloads count
   await pool.query(
     'UPDATE addons SET downloads = downloads + 1 WHERE id = $1',
-    [addonId]
+    [addon_id]
   )
-}
 
-export async function recordDownload(
-  addonId: number,
-  ipAddress?: string,
-  userAgent?: string
-) {
-  await pool.query(
-    `INSERT INTO addon_downloads (addon_id, ip_address, user_agent)
-     VALUES ($1, $2, $3)`,
-    [addonId, ipAddress || null, userAgent || null]
-  )
-  await incrementDownloads(addonId)
+  return res.rows[0]
 }
