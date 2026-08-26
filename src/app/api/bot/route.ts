@@ -6,7 +6,7 @@ import { getStats } from '@/lib/db/neon'
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-const BOT_TOKEN = proces…OKEN || ''
+const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || ''
 const OWNER_ID = 6769891933
 
 // === Send message to Telegram ===
