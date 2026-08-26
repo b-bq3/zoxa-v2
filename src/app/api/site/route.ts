@@ -75,7 +75,7 @@ export async function POST(request: Request) {
     if (download && addonId) {
       const ip = request.headers.get('x-forwarded-for') || 'unknown'
       const userAgent = request.headers.get('user-agent') || ''
-      await recordDownload(addonId, ip, userAgent)
+      await recordDownload(parseInt(addonId), undefined, ip, userAgent)
       return NextResponse.json({ success: true })
     }
 

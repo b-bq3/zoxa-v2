@@ -370,7 +370,7 @@ export async function POST(request: Request) {
           ok: true,
           action: 'reply',
           cid,
-          text: `📊 إحصائيات Zoxa\n\n📦 الإضافات: ${stats.addonsCount}\n📥 التحميلات: ${stats.totalDownloads.toLocaleString()}`,
+          text: `📊 إحصائيات Zoxa\n\n📦 الإضافات: ${stats.total_addons}\n📥 التحميلات: ${stats.total_downloads.toLocaleString()}`,
           parse_mode: 'HTML'
         })
       } catch (e: any) {
