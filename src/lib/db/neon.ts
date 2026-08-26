@@ -1,14 +1,23 @@
 // ===== Zoxa — Neon PostgreSQL Client =====
 import { Pool } from 'pg'
 
+// Debug: log all DATABASE_* env vars
+if (process.env.NODE_ENV === 'production') {
+  console.log('🔍 Vercel Production - Available DB Env Vars:', {
+    DATABASE_URL: process.env.DATABASE_URL ? 'SET' : 'NOT_SET',
+    NEON_DATABASE_URL: process.env.NEON_DATABASE_URL ? 'SET' : 'NOT_SET',
+  })
+}
+
 const neonConnectionString = process.env.DATABASE_URL || process.env.NEON_DATABASE_URL
 
 if (!neonConnectionString) {
-  console.error('❌ DATABASE_URL or NEON_DATABASE_URL not set')
-  throw new Error('DATABASE_URL or NEON_DATABASE_URL not set')
+  console.error('❌ CRITICAL: No DATABASE_URL found')
+  console.error('❌ Available vars:', Object.keys(process.env).filter(k => k.includes('DATABASE') || k.includes('NEON')))
+  throw new Error('DATABASE_URL not configured')
 }
 
-console.log('🔗 Connecting to Neon with DATABASE_URL starting with:', neonConnectionString.substring(0, 50) + '...')
+console.log('🔗 Connecting to Neon:', neonConnectionString.substring(0, 80) + '...')
 
 export const pool = new Pool({
   connectionString: neonConnectionString,
@@ -16,7 +25,9 @@ export const pool = new Pool({
     rejectUnauthorized: false
   },
   idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 5000,
+  connectionTimeoutMillis: 10000,
+  max: 20,
+  min: 2,
 })
 
 // ===== Addon Operations =====
