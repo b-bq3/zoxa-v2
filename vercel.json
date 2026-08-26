@@ -1,4 +1,8 @@
 {
+  "domains": [
+    "zox-a.vercel.app",
+    "*.zox-a.vercel.app"
+  ],
   "headers": [
     {
       "source": "/(.*)",
@@ -34,6 +38,13 @@
     {
       "source": "/zoxa/m2/research",
       "destination": "/search"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "https://zox-a.vercel.app/$1",
+      "status": 308
     }
   ]
 }
