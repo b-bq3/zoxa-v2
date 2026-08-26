@@ -93,6 +93,15 @@ async function handleCommand(chatId: number, uid: number, txt: string) {
     return
   }
 
+  if (txt === '/add') {
+    await sendTelegram(chatId,
+      `📸 <b>الخطوة 1/7:</b> صورة الإضافة\n\n` +
+      `أرسل رابط صورة أو ارفع صورة.\n\n` +
+      `<i>أو أرسل "تخطي" للمتابعة بدون صورة.</i>`
+    )
+    return
+  }
+
   if (txt.startsWith('/search')) {
     const q = txt.replace(/^\/search\s+/, '').trim()
     if (!q) {
