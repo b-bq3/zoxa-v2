@@ -1,31 +1,23 @@
-// ===== Zoxa — Neon HTTP Client =====
-// يستخدم Neon SQL Over HTTP API
-const NEON_API_TOKEN = process.env.NEON_API_TOKEN || ''
+// ===== Zoxa — Neon Database Client =====
+// يستخدم pg Pool مباشر (بما أن DATABASE_URL صحيحة الآن)
+import { Pool } from 'pg'
+
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: false },
+  max: 1,
+  idleTimeoutMillis: 8000,
+  connectionTimeoutMillis: 8000,
+})
 
 export async function query(text: string, values: any[] = []) {
-  // Neon SQL over HTTP v2
-  const response = await fetch(
-    `https://api.neon.tech/v2/projects/tiny-mode-28836954/branches/br-solitary-recipe-ac9gjuke/databases/neondb/sql`,
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${NEON_API_TOKEN}`,
-      },
-      body: JSON.stringify({
-        query: text,
-        params: values,
-      }),
-    }
-  )
-
-  if (!response.ok) {
-    const errorText = await response.text()
-    throw new Error(`Neon API error: ${response.status} ${errorText.substring(0, 200)}`)
+  const client = await pool.connect()
+  try {
+    const result = await client.query(text, values)
+    return result
+  } finally {
+    client.release()
   }
-
-  const result = await response.json()
-  return result
 }
 
 export async function getAddon(id: number) {
