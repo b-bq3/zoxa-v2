@@ -1,126 +1,69 @@
-// ===== Zoxa — Neon PostgreSQL Direct Client =====
-import { Pool } from 'pg'
+// ===== Zoxa — Neon Serverless Client =====
+// يستخدم Neon HTTP API مباشر (يتجنب مشكلة DNS وكلمة المرور)
+const NEON_PROJECT_ID = 'tiny-mode-28836954'
+const NEON_BRANCH = 'br-solitary-recipe-ac9gjuke'
+const NEON_API_TOKEN = process.env.NEON_API_TOKEN || ''
 
-// Create a fresh pool instance for each request
-export function createPool() {
-  const url = process.env.DATABASE_URL
-  if (!url) {
-    throw new Error('DATABASE_URL not configured')
-  }
-  return new Pool({
-    connectionString: url,
-    ssl: { rejectUnauthorized: false },
-    idleTimeoutMillis: 10000,
-    connectionTimeoutMillis: 5000,
-  })
-}
-
-// Use pool for queries
-export const pool = {
-  query: async (text: string, values?: any[]) => {
-    const p = createPool()
-    try {
-      return await p.query(text, values)
-    } finally {
-      await p.end()
+export async function query(text: string, values: any[] = []) {
+  const response = await fetch(
+    `https://console.neon.tech/api/v2/projects/${NEON_PROJECT_ID}/branches/${NEON_BRANCH}/sql`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${NEON_API_TOKEN}`,
+      },
+      body: JSON.stringify({ query: text, params: values }),
     }
-  },
-  connect: async () => {
-    return createPool().connect()
-  },
-}
+  )
 
-// ===== Addon Operations =====
+  if (!response.ok) {
+    const errorText = await response.text()
+    throw new Error(`Neon API error: ${response.status} ${errorText.substring(0, 200)}`)
+  }
+
+  const result = await response.json()
+  return result
+}
 
 export async function getAddon(id: number) {
-  const res = await pool.query('SELECT * FROM addons WHERE id = $1', [id])
-  return res.rows[0]
-}
-
-export async function getAddonByName(name: string) {
-  const res = await pool.query('SELECT * FROM addons WHERE name = $1', [name])
-  return res.rows[0]
+  const res = await query('SELECT * FROM addons WHERE id = $1', [id])
+  return res.rows?.[0]
 }
 
 export async function getAllAddons(limit = 50, offset = 0) {
-  const res = await pool.query(
-    'SELECT * FROM addons ORDER BY created_at DESC LIMIT $1 OFFSET $2',
-    [limit, offset]
-  )
-  return res.rows
+  const res = await query('SELECT * FROM addons ORDER BY created_at DESC LIMIT $1 OFFSET $2', [limit, offset])
+  return res.rows || []
 }
 
-export async function searchAddons(query: string, limit = 10) {
-  const res = await pool.query(
-    `SELECT * FROM addons 
-     WHERE name ILIKE $1 OR description ILIKE $1 
-     ORDER BY created_at DESC 
-     LIMIT $2`,
-    [`%${query}%`, limit]
+export async function searchAddons(searchQuery: string, limit = 10) {
+  const res = await query(
+    `SELECT * FROM addons WHERE name ILIKE $1 OR description ILIKE $1 ORDER BY created_at DESC LIMIT $2`,
+    [`%${searchQuery}%`, limit]
   )
-  return res.rows
-}
-
-export async function getAddonsByCategory(category: string, limit = 20) {
-  const res = await pool.query(
-    'SELECT * FROM addons WHERE category = $1 ORDER BY created_at DESC LIMIT $2',
-    [category, limit]
-  )
-  return res.rows
+  return res.rows || []
 }
 
 export async function getStats() {
-  const addonsRes = await pool.query('SELECT COUNT(*) as count FROM addons')
-  const downloadsRes = await pool.query('SELECT COUNT(*) as count FROM addon_downloads')
-
+  const addonsRes = await query('SELECT COUNT(*) as count FROM addons')
+  const downloadsRes = await query('SELECT COUNT(*) as count FROM addon_downloads')
   return {
-    total_addons: parseInt(addonsRes.rows[0]?.count || '0'),
-    total_downloads: parseInt(downloadsRes.rows[0]?.count || '0'),
+    total_addons: parseInt(addonsRes.rows?.[0]?.count || '0'),
+    total_downloads: parseInt(downloadsRes.rows?.[0]?.count || '0'),
   }
 }
 
-export async function createAddon(data: {
-  name: string
-  description: string
-  edition: string
-  version: string
-  category: string
-  image_url?: string
-  file_url?: string
-  file_size?: number
-  created_by?: number
-}) {
-  const res = await pool.query(
+export async function createAddon(data: any) {
+  const res = await query(
     `INSERT INTO addons (name, description, edition, version, category, image_url, file_url, file_size, created_by)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-     RETURNING *`,
-    [
-      data.name,
-      data.description,
-      data.edition,
-      data.version,
-      data.category,
-      data.image_url || null,
-      data.file_url || null,
-      data.file_size || 0,
-      data.created_by || null,
-    ]
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+    [data.name, data.description, data.edition, data.version, data.category, data.image_url || null, data.file_url || null, data.file_size || 0, data.created_by || null]
   )
-  return res.rows[0]
+  return res.rows?.[0]
 }
 
 export async function recordDownload(addon_id: number, user_id?: number, ip?: string, user_agent?: string) {
-  const res = await pool.query(
-    `INSERT INTO addon_downloads (addon_id, user_id, ip_address, user_agent)
-     VALUES ($1, $2, $3, $4)
-     RETURNING *`,
-    [addon_id, user_id || null, ip || null, user_agent || null]
-  )
-
-  await pool.query(
-    'UPDATE addons SET downloads = downloads + 1 WHERE id = $1',
-    [addon_id]
-  )
-
-  return res.rows[0]
+  await query(`INSERT INTO addon_downloads (addon_id, user_id, ip_address, user_agent) VALUES ($1, $2, $3, $4)`, [addon_id, user_id || null, ip || null, user_agent || null])
+  await query('UPDATE addons SET downloads = downloads + 1 WHERE id = $1', [addon_id])
+  return { success: true }
 }
