@@ -20,7 +20,7 @@ async function sendTelegram(chatId: number, text: string, buttons?: any[]) {
 
   if (buttons?.length) {
     body.reply_markup = {
-      inline_keyboard: buttons.map(row => row.map(btn => ({
+      inline_keyboard: buttons.map(row => row.map((btn: { text: string; callback_data: string }) => ({
         text: btn.text,
         callback_data: btn.callback_data,
       }))),
@@ -127,7 +127,7 @@ async function handleCommand(chatId: number, uid: number, txt: string, data?: st
       return
     }
     try {
-      const searchQuery = q || data?.replace('/search ', '')
+      const searchQuery = q || (data ? data.replace('/search ', '') : '')
       const results = await searchAddons(searchQuery, 5)
       if (!results.length) {
         await sendTelegram(chatId, `🔍 لا توجد نتائج لـ "${searchQuery}"`, mainMenuButtons)
