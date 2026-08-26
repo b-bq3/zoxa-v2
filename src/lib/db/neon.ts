@@ -1,19 +1,21 @@
-// ===== Zoxa — Neon Serverless Client =====
-// يستخدم Neon HTTP API مباشر (يتجنب مشكلة DNS وكلمة المرور)
-const NEON_PROJECT_ID = 'tiny-mode-28836954'
-const NEON_BRANCH = 'br-solitary-recipe-ac9gjuke'
+// ===== Zoxa — Neon HTTP Client =====
+// يستخدم Neon SQL Over HTTP API
 const NEON_API_TOKEN = process.env.NEON_API_TOKEN || ''
 
 export async function query(text: string, values: any[] = []) {
+  // Neon SQL over HTTP v2
   const response = await fetch(
-    `https://console.neon.tech/api/v2/projects/${NEON_PROJECT_ID}/branches/${NEON_BRANCH}/sql`,
+    `https://api.neon.tech/v2/projects/tiny-mode-28836954/branches/br-solitary-recipe-ac9gjuke/databases/neondb/sql`,
     {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${NEON_API_TOKEN}`,
       },
-      body: JSON.stringify({ query: text, params: values }),
+      body: JSON.stringify({
+        query: text,
+        params: values,
+      }),
     }
   )
 
@@ -36,34 +38,27 @@ export async function getAllAddons(limit = 50, offset = 0) {
   return res.rows || []
 }
 
-export async function searchAddons(searchQuery: string, limit = 10) {
-  const res = await query(
-    `SELECT * FROM addons WHERE name ILIKE $1 OR description ILIKE $1 ORDER BY created_at DESC LIMIT $2`,
-    [`%${searchQuery}%`, limit]
-  )
+export async function searchAddons(q: string, limit = 10) {
+  const res = await query('SELECT * FROM addons WHERE name ILIKE $1 OR description ILIKE $1 ORDER BY created_at DESC LIMIT $2', [`%${q}%`, limit])
   return res.rows || []
 }
 
 export async function getStats() {
-  const addonsRes = await query('SELECT COUNT(*) as count FROM addons')
-  const downloadsRes = await query('SELECT COUNT(*) as count FROM addon_downloads')
-  return {
-    total_addons: parseInt(addonsRes.rows?.[0]?.count || '0'),
-    total_downloads: parseInt(downloadsRes.rows?.[0]?.count || '0'),
-  }
+  const a = await query('SELECT COUNT(*) as c FROM addons')
+  const d = await query('SELECT COUNT(*) as c FROM addon_downloads')
+  return { total_addons: parseInt(a.rows?.[0]?.c || '0'), total_downloads: parseInt(d.rows?.[0]?.c || '0') }
 }
 
 export async function createAddon(data: any) {
   const res = await query(
-    `INSERT INTO addons (name, description, edition, version, category, image_url, file_url, file_size, created_by)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+    `INSERT INTO addons (name, description, edition, version, category, image_url, file_url, file_size, created_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
     [data.name, data.description, data.edition, data.version, data.category, data.image_url || null, data.file_url || null, data.file_size || 0, data.created_by || null]
   )
   return res.rows?.[0]
 }
 
 export async function recordDownload(addon_id: number, user_id?: number, ip?: string, user_agent?: string) {
-  await query(`INSERT INTO addon_downloads (addon_id, user_id, ip_address, user_agent) VALUES ($1, $2, $3, $4)`, [addon_id, user_id || null, ip || null, user_agent || null])
+  await query('INSERT INTO addon_downloads (addon_id,user_id,ip_address,user_agent) VALUES ($1,$2,$3,$4)', [addon_id, user_id || null, ip || null, user_agent || null])
   await query('UPDATE addons SET downloads = downloads + 1 WHERE id = $1', [addon_id])
   return { success: true }
 }
