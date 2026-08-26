@@ -49,6 +49,9 @@ const mainMenuButtons = [
   [{ text: 'ℹ️ مساعدة', callback_data: '/help' }],
 ]
 
+// === User state for /add command ===
+const userState: Record<number, { step: number; data: any }> = {}
+
 // === Handle commands ===
 async function handleCommand(chatId: number, uid: number, txt: string, data?: string) {
   console.log(`🔍 Command: uid=${uid} txt="${txt}" data="${data}"`)
@@ -56,6 +59,12 @@ async function handleCommand(chatId: number, uid: number, txt: string, data?: st
   // فقط للمالك
   if (uid !== OWNER_ID) {
     await sendTelegram(chatId, '❌ هذا البوت خاص.')
+    return
+  }
+
+  // إذا كان المستخدم في وسط عملية /add
+  if (userState[chatId]?.step > 0) {
+    await handleAddStep(chatId, txt)
     return
   }
 
@@ -79,6 +88,7 @@ async function handleCommand(chatId: number, uid: number, txt: string, data?: st
   }
 
   if (txt === '/add' || data === '/add') {
+    userState[chatId] = { step: 1, data: {} }
     await sendTelegram(
       chatId,
       `📸 <b>الخطوة 1/7:</b> صورة الإضافة\n\nأرسل رابط صورة أو ارفع صورة.\n\n<i>أو أرسل "تخطي" للمتابعة بدون صورة.</i>`
@@ -145,7 +155,113 @@ async function handleCommand(chatId: number, uid: number, txt: string, data?: st
     return
   }
 
-  // أمر غير معروف
+  // === Handle /add steps ===
+async function handleAddStep(chatId: number, txt: string) {
+  const state = userState[chatId]
+  if (!state) return
+
+  if (state.step === 1) {
+    // الخطوة 1: صورة الإضافة
+    if (txt.toLowerCase() === 'تخطي') {
+      state.data.image_url = null
+    } else if (txt.startsWith('http')) {
+      state.data.image_url = txt
+    } else {
+      await sendTelegram(chatId, '❌ رابط الصورة غير صالح. أرسل رابطاً صحيحاً أو "تخطي".')
+      return
+    }
+    state.step = 2
+    await sendTelegram(chatId, `📝 <b>الخطوة 2/7:</b> اسم الإضافة\n\nأرسل اسم الإضافة:`)
+    return
+  }
+
+  if (state.step === 2) {
+    // الخطوة 2: اسم الإضافة
+    if (!txt.trim()) {
+      await sendTelegram(chatId, '❌ اسم الإضافة مطلوب. أرسل الاسم:')
+      return
+    }
+    state.data.name = txt.trim()
+    state.step = 3
+    await sendTelegram(chatId, `📝 <b>الخطوة 3/7:</b> وصف الإضافة\n\nأرسل وصفاً للإضافة:`)
+    return
+  }
+
+  if (state.step === 3) {
+    // الخطوة 3: وصف الإضافة
+    state.data.description = txt.trim()
+    state.step = 4
+    await sendTelegram(chatId, `📝 <b>الخطوة 4/7:</b> إصدار الإضافة\n\nأرسل إصدار الإضافة (مثلاً: 1.0.0):`)
+    return
+  }
+
+  if (state.step === 4) {
+    // الخطوة 4: إصدار الإضافة
+    state.data.version = txt.trim()
+    state.step = 5
+    await sendTelegram(chatId, `📝 <b>الخطوة 5/7:</b> فئة الإضافة\n\nأرسل فئة الإضافة (مثلاً: أدوات, ألعاب):`)
+    return
+  }
+
+  if (state.step === 5) {
+    // الخطوة 5: فئة الإضافة
+    state.data.category = txt.trim()
+    state.step = 6
+    await sendTelegram(chatId, `📁 <b>الخطوة 6/7:</b> رابط ملف الإضافة\n\nأرسل رابط ملف الإضافة:`)
+    return
+  }
+
+  if (state.step === 6) {
+    // الخطوة 6: رابط ملف الإضافة
+    if (!txt.startsWith('http')) {
+      await sendTelegram(chatId, '❌ رابط الملف غير صالح. أرسل رابطاً صحيحاً:')
+      return
+    }
+    state.data.file_url = txt.trim()
+    state.step = 7
+    await sendTelegram(
+      chatId,
+      `✅ <b>الخطوة 7/7:</b> تأكيد الحفظ\n\n` +
+      `📋 <b>البيانات:</b>\n` +
+      `• <b>الاسم:</b> ${state.data.name}\n` +
+      `• <b>الوصف:</b> ${state.data.description}\n` +
+      `• <b>الإصدار:</b> ${state.data.version}\n` +
+      `• <b>الفئة:</b> ${state.data.category}\n` +
+      `• <b>الصورة:</b> ${state.data.image_url || 'بدون صورة'}\n` +
+      `• <b>الملف:</b> ${state.data.file_url}\n\n` +
+      `أرسل "حفظ" لتأكيد الحفظ أو "إلغاء" للإلغاء.`
+    )
+    return
+  }
+
+  if (state.step === 7) {
+    // الخطوة 7: تأكيد الحفظ
+    if (txt.toLowerCase() === 'حفظ') {
+      try {
+        const { createAddon } = await import('@/lib/db/neon')
+        state.data.created_by = uid
+        const addon = await createAddon(state.data)
+        await sendTelegram(
+          chatId,
+          `✅ <b>تم حفظ الإضافة بنجاح!</b>\n\n` +
+          `🆔 <b>المعرف:</b> ${addon.id}\n` +
+          `📋 <b>الاسم:</b> ${addon.name}\n` +
+          `🌐 <a href="https://zox-a.vercel.app/addons/${addon.id}">عرض الإضافة</a>`,
+          mainMenuButtons
+        )
+      } catch (e: any) {
+        console.error('❌ createAddon error:', e.message)
+        await sendTelegram(chatId, `❌ خطأ في حفظ الإضافة: ${e.message}`)
+      }
+    } else {
+      await sendTelegram(chatId, '❌ تم إلغاء العملية.', mainMenuButtons)
+    }
+    delete userState[chatId]
+    return
+  }
+}
+
+// أمر غير معروف
   await sendTelegram(chatId, '🤔 أمر غير معروف. استخدم الأزرار أدناه:', mainMenuButtons)
 }
 
