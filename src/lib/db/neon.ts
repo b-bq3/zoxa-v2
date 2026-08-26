@@ -1,10 +1,10 @@
 // ===== Zoxa — Neon PostgreSQL Client =====
 import { Pool } from 'pg'
 
-let pool: Pool | null = null
+let poolInstance: Pool | null = null
 
-export function getPool(): Pool {
-  if (pool) return pool
+function getPool(): Pool {
+  if (poolInstance) return poolInstance
 
   const connectionString = process.env.DATABASE_URL
   if (!connectionString) {
@@ -13,7 +13,7 @@ export function getPool(): Pool {
   }
 
   console.log('🔗 Creating new Neon connection pool...')
-  pool = new Pool({
+  poolInstance = new Pool({
     connectionString,
     ssl: {
       rejectUnauthorized: false,
@@ -24,11 +24,11 @@ export function getPool(): Pool {
     min: 2,
   })
 
-  pool.on('error', (err: any) => {
+  poolInstance.on('error', (err: any) => {
     console.error('❌ Pool error:', err.message)
   })
 
-  return pool
+  return poolInstance
 }
 
 // Lazy-load pool on first use
@@ -46,9 +46,9 @@ export const pool = {
     return getPool().connect()
   },
   end: async () => {
-    if (pool) {
-      await pool.end()
-      pool = null
+    if (poolInstance) {
+      await poolInstance.end()
+      poolInstance = null
     }
   },
 }
