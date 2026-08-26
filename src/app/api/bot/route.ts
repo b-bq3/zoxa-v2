@@ -1,33 +1,60 @@
 // ===== Zoxa — Bot Webhook =====
 // البوت جزء لا يتجزأ من الموقع
 import { NextResponse } from 'next/server'
-// === API Site Functions ===
+// === Supabase Functions ===
+import { createClient } from '@supabase/supabase-js'
+
+const supabaseUrl = process.env.SUPABASE_URL || 'https://felix-fx-top.supabase.co'
+const supabaseKey = process.env.SUPABASE_ANON_KEY || 'eyJhbG…_r1U'
+const supabase = createClient(supabaseUrl, supabaseKey)
+
 async function getStats() {
-  const res = await fetch('https://zoxa-v2.vercel.app/api/stats')
-  if (!res.ok) throw new Error('Failed to fetch stats')
-  return await res.json()
+  const { count: total_addons, error: addonsError } = await supabase
+    .from('addons')
+    .select('*', { count: 'exact', head: true })
+  
+  const { count: total_downloads, error: downloadsError } = await supabase
+    .from('addon_downloads')
+    .select('*', { count: 'exact', head: true })
+  
+  if (addonsError || downloadsError) {
+    throw new Error(addonsError?.message || downloadsError?.message)
+  }
+  
+  return { total_addons, total_downloads }
 }
 
 async function getAllAddons(limit = 10, offset = 0) {
-  const res = await fetch(`https://zoxa-v2.vercel.app/api/addons?limit=${limit}&offset=${offset}`)
-  if (!res.ok) throw new Error('Failed to fetch addons')
-  return await res.json()
+  const { data, error } = await supabase
+    .from('addons')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .range(offset, offset + limit - 1)
+  
+  if (error) throw error
+  return data || []
 }
 
 async function searchAddons(q: string, limit = 5) {
-  const res = await fetch(`https://zoxa-v2.vercel.app/api/search?q=${encodeURIComponent(q)}&limit=${limit}`)
-  if (!res.ok) throw new Error('Failed to search addons')
-  return await res.json()
+  const { data, error } = await supabase
+    .from('addons')
+    .select('*')
+    .or(`name.ilike.%${q}%,description.ilike.%${q}%`)
+    .order('created_at', { ascending: false })
+    .limit(limit)
+  
+  if (error) throw error
+  return data || []
 }
 
 async function createAddon(data: any) {
-  const res = await fetch('https://zoxa-v2.vercel.app/api/addon', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  })
-  if (!res.ok) throw new Error('Failed to create addon')
-  return await res.json()
+  const { data: addon, error } = await supabase
+    .from('addons')
+    .insert([data])
+    .select()
+  
+  if (error) throw error
+  return addon?.[0]
 }
 
 export const runtime = 'nodejs'
