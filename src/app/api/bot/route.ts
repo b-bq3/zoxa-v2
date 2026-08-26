@@ -1,7 +1,34 @@
 // ===== Zoxa — Bot Webhook =====
 // البوت جزء لا يتجزأ من الموقع
 import { NextResponse } from 'next/server'
-import { getStats, getAllAddons, searchAddons } from '@/lib/db/neon'
+// === API Site Functions ===
+async function getStats() {
+  const res = await fetch('https://zoxa-v2.vercel.app/api/stats')
+  if (!res.ok) throw new Error('Failed to fetch stats')
+  return await res.json()
+}
+
+async function getAllAddons(limit = 10, offset = 0) {
+  const res = await fetch(`https://zoxa-v2.vercel.app/api/addons?limit=${limit}&offset=${offset}`)
+  if (!res.ok) throw new Error('Failed to fetch addons')
+  return await res.json()
+}
+
+async function searchAddons(q: string, limit = 5) {
+  const res = await fetch(`https://zoxa-v2.vercel.app/api/search?q=${encodeURIComponent(q)}&limit=${limit}`)
+  if (!res.ok) throw new Error('Failed to search addons')
+  return await res.json()
+}
+
+async function createAddon(data: any) {
+  const res = await fetch('https://zoxa-v2.vercel.app/api/addon', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  })
+  if (!res.ok) throw new Error('Failed to create addon')
+  return await res.json()
+}
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -158,15 +185,24 @@ async function handleCommand(chatId: number, uid: number, txt: string, data?: st
   // === Handle /add steps ===
 async function handleAddStep(chatId: number, txt: string) {
   const state = userState[chatId]
-  if (!state) return
+  if (!state) {
+    console.error('❌ handleAddStep: state is undefined')
+    return
+  }
+
+  console.log(`🔍 handleAddStep: step=${state.step} txt="${txt}" state=${JSON.stringify(state)}`)
 
   if (state.step === 1) {
     // الخطوة 1: صورة الإضافة
+    console.log(`🔍 Step 1: txt="${txt}" isSkip=${txt.toLowerCase() === 'تخطي'} isUrl=${txt.startsWith('http')}`)
     if (txt.toLowerCase() === 'تخطي') {
       state.data.image_url = null
+      console.log('✅ Step 1: Skipped image')
     } else if (txt.startsWith('http')) {
       state.data.image_url = txt
+      console.log(`✅ Step 1: Image URL saved: ${txt}`)
     } else {
+      console.log(`❌ Step 1: Invalid input: "${txt}"`)
       await sendTelegram(chatId, '❌ رابط الصورة غير صالح. أرسل رابطاً صحيحاً أو "تخطي".')
       return
     }
