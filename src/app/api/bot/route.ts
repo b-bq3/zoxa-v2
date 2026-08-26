@@ -6,6 +6,12 @@ import { getRateLimitStatus } from '@/lib/infrastructure/rate-limiter'
 import { addonCache, statsCache } from '@/lib/infrastructure/cache'
 import { issueBotJwt } from '@/lib/infrastructure/jwt'
 import { recordRequest, recordCircuitBreaker } from '@/lib/infrastructure/health-score'
+import {
+  createAddon,
+  getAllAddons,
+  searchAddons,
+  getStats,
+} from '@/lib/db/neon'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -195,42 +201,46 @@ export async function POST(request: Request) {
           w.file = txt
         }
 
-        const body = JSON.stringify({
-          nm: w.name,
-          ds: w.desc,
-          v: w.version,
-          mv: w.version,
-          ed: w.edition,
-          ct: w.category,
-          im: w.image || '',
-          fl: w.file || '',
-          fs: w.fileSize || 0,
-        })
-
-        const jw = await issueBotJwt()
-        const res = await fetch('https://zoxa-v2.vercel.app/api/site', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${jw}` },
-          body
-        })
-        const d = await res.json()
-
-        delW(cid)
-
-        if (res.ok && d.success) {
-          return NextResponse.json({
-            ok: true,
-            action: 'reply',
-            cid,
-            text: `✅ <b>تم الرفع!</b>\n\n📦 <b>${esc(w.name || '')}</b>\n🆔 <code>${d.id}</code>\n📖 ${esc(w.desc || '')}\n🎮 ${(w.edition === 'bedrock' ? 'بيدروك' : 'جافا')} • ${w.version || 'N/A'} • ${w.category || 'N/A'}\n🔗 <a href="https://zoxa-v2.vercel.app/addons">عرض في الموقع</a>`,
-            parse_mode: 'HTML'
+        try {
+          // Insert addon to Neon database
+          const addon = await createAddon({
+            name: w.name || 'Unnamed',
+            description: w.desc || 'No description',
+            edition: w.edition || 'java',
+            version: w.version || '1.0',
+            category: w.category || 'أخرى',
+            image_url: w.image,
+            file_url: w.file,
+            file_size: w.fileSize || 0,
+            created_by: cid,
           })
-        } else {
+
+          delW(cid)
+
+          if (addon && addon.id) {
+            return NextResponse.json({
+              ok: true,
+              action: 'reply',
+              cid,
+              text: `✅ <b>تم الرفع!</b>\n\n📦 <b>${esc(w.name || '')}</b>\n🆔 <code>${addon.id}</code>\n📖 ${esc(w.desc || '')}\n🎮 ${(w.edition === 'bedrock' ? 'بيدروك' : 'جافا')} • ${w.version || 'N/A'} • ${w.category || 'N/A'}\n🔗 <a href="https://zox-a.vercel.app/addons">عرض في الموقع</a>`,
+              parse_mode: 'HTML'
+            })
+          } else {
+            return NextResponse.json({
+              ok: true,
+              action: 'reply',
+              cid,
+              text: `❌ <b>فشل الرفع</b>\n\nحدث خطأ في حفظ الإضافة`,
+              parse_mode: 'HTML'
+            })
+          }
+        } catch (dbError: any) {
+          delW(cid)
           return NextResponse.json({
             ok: true,
             action: 'reply',
             cid,
-            text: `❌ <b>فشل الرفع</b>\n\n${d.error || 'خطأ غير معروف'}`,
+            text: `❌ <b>فشل الرفع</b>\n\n${dbError.message || 'خطأ في قاعدة البيانات'}`,
             parse_mode: 'HTML'
           })
         }
@@ -286,67 +296,92 @@ export async function POST(request: Request) {
           parse_mode: 'HTML'
         })
       }
-      const res = await fetch(`https://zoxa-v2.vercel.app/api/site?a=search&q=${encodeURIComponent(q)}`)
-      const d = await res.json()
-      const data = d.data || []
-      if (!data.length) {
+      try {
+        const data = await searchAddons(q, 5)
+        if (!data.length) {
+          return NextResponse.json({
+            ok: true,
+            action: 'reply',
+            cid,
+            text: `🔍 لا توجد نتائج لـ "${esc(q)}"`,
+            parse_mode: 'HTML'
+          })
+        }
+        let t = `🔍 نتائج البحث: "${esc(q)}"\n\n`
+        data.forEach((a: any, i: number) => {
+          t += `${i + 1}. <b>${esc(a.name)}</b>\n`
+        })
         return NextResponse.json({
           ok: true,
           action: 'reply',
           cid,
-          text: `🔍 لا توجد نتائج لـ "${esc(q)}"`,
+          text: t,
+          parse_mode: 'HTML'
+        })
+      } catch (e: any) {
+        return NextResponse.json({
+          ok: true,
+          action: 'reply',
+          cid,
+          text: '❌ خطأ في البحث',
           parse_mode: 'HTML'
         })
       }
-      let t = `🔍 نتائج البحث: "${esc(q)}"\n\n`
-      data.slice(0, 5).forEach((a: any, i: number) => {
-        t += `${i + 1}. <b>${esc(a.name)}</b>\n`
-      })
-      return NextResponse.json({
-        ok: true,
-        action: 'reply',
-        cid,
-        text: t,
-        parse_mode: 'HTML'
-      })
     }
 
     if (txt === '/list' || txt === '/jlb') {
-      const res = await fetch('https://zoxa-v2.vercel.app/api/site?a=list')
-      const d = await res.json()
-      const data = d.data || []
-      if (!data.length) {
+      try {
+        const data = await getAllAddons(10, 0)
+        if (!data.length) {
+          return NextResponse.json({
+            ok: true,
+            action: 'reply',
+            cid,
+            text: '📦 لا توجد إضافات حالياً',
+            parse_mode: 'HTML'
+          })
+        }
+        let t = '📦 أحدث الإضافات:\n\n'
+        data.forEach((a: any, i: number) => {
+          t += `${i + 1}. <b>${esc(a.name)}</b>\n`
+        })
         return NextResponse.json({
           ok: true,
           action: 'reply',
           cid,
-          text: '📦 لا توجد إضافات حالياً',
+          text: t,
+          parse_mode: 'HTML'
+        })
+      } catch (e: any) {
+        return NextResponse.json({
+          ok: true,
+          action: 'reply',
+          cid,
+          text: '❌ خطأ في جلب الإضافات',
           parse_mode: 'HTML'
         })
       }
-      let t = '📦 أحدث الإضافات:\n\n'
-      data.forEach((a: any, i: number) => {
-        t += `${i + 1}. <b>${esc(a.name)}</b>\n`
-      })
-      return NextResponse.json({
-        ok: true,
-        action: 'reply',
-        cid,
-        text: t,
-        parse_mode: 'HTML'
-      })
     }
 
     if (txt === '/stats' || txt === '/Hs2y') {
-      const res = await fetch('https://zoxa-v2.vercel.app/api/site?a=stats')
-      const d = await res.json()
-      return NextResponse.json({
-        ok: true,
-        action: 'reply',
-        cid,
-        text: `📊 إحصائيات Zoxa\n\n📦 الإضافات: ${d.addonsCount || 0}\n📥 التحميلات: ${(d.totalDownloads || 0).toLocaleString()}`,
-        parse_mode: 'HTML'
-      })
+      try {
+        const stats = await getStats()
+        return NextResponse.json({
+          ok: true,
+          action: 'reply',
+          cid,
+          text: `📊 إحصائيات Zoxa\n\n📦 الإضافات: ${stats.addonsCount}\n📥 التحميلات: ${stats.totalDownloads.toLocaleString()}`,
+          parse_mode: 'HTML'
+        })
+      } catch (e: any) {
+        return NextResponse.json({
+          ok: true,
+          action: 'reply',
+          cid,
+          text: '❌ خطأ في جلب الإحصائيات',
+          parse_mode: 'HTML'
+        })
+      }
     }
 
     return NextResponse.json({
